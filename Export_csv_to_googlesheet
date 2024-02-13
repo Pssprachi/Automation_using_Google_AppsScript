@@ -1,0 +1,82 @@
+// This function retrieves emails matching a certain query, extracts attachments, and processes CSV attachments to populate a Google Sheet.
+
+function your_func_name_here() {
+  // Destination sheet where the data will be populated
+  var DestinationSheet = 'YOUR_DESTINATION_SHEET_ID_HERE'; // Add the destination sheet ID
+
+  // ID of the archive folder
+  var archiveFolderID = 'YOUR_ARCHIVE_FOLDER_ID_HERE'; // Add the archive folder ID
+
+  // Gmail search query to find relevant emails
+  var query = 'YOUR_GMAIL_SEARCH_QUERY_HERE'; // Add your Gmail search query
+
+  // Retrieve threads matching the Gmail search query
+  var threads = GmailApp.search(query);
+
+  // Check if threads were found
+  if (threads != null) {
+    for (var index in threads) {
+      var lastOne = threads[index];
+      var ThreadID = lastOne.getId();
+      var NMessages = lastOne.getMessageCount();
+
+      for (var i = 0; i < NMessages; i++) {
+        var message = lastOne.getMessages()[i];
+        var attachments = message.getAttachments();
+
+        for (j in attachments) {
+          var attachment = attachments[j];
+          var type = attachment.getContentType();
+          var name = attachment.getName().substring(0, attachment.getName().indexOf('.'));
+          var checkName = name.indexOf('name_of_file_here') > -1;
+
+          // Check if the file name matches the expected format
+          if (checkName == false) {
+            continue;
+          } else {
+            // Process the attachment if it matches the expected format
+
+            // Copy attachment as a Google Sheet in Drive if it is a CSV
+            if (type.indexOf('text ') > -1 || type.indexOf('octet') > -1) {
+              var blob = attachment.copyBlob().setContentTypeFromExtension();
+              var csv = attachment.copyBlob().getDataAsString();
+              csv = csv.replaceAll(",", ""); // Remove commas
+              csv = csv.replaceAll('"', ""); // Remove quotation marks
+              csv = csv.replaceAll('�', ""); // Remove unknown characters
+
+              var csvData = Utilities.parseCsv(csv, ";");
+              var rows = csvData.length;
+              var columns = csvData[0].length;
+
+              var sheet = SpreadsheetApp.openById(DestinationSheet).getSheetByName("sheet_name");
+              sheet.clearContents();
+              sheet.getRange(1, 1, rows, columns).setValues(csvData);
+
+              lastOne.markRead();
+
+              // Update support tab with the current date
+              var ss = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID_HERE'); // Add the spreadsheet ID
+              var SupportSheet = ss.getSheetByName("sheet_name_here");
+              SupportSheet.getRange(2, 3).setValue(Utilities.formatDate(new Date(), 'Etc/GMT', 'dd/MM')).setNumberFormat("@");
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// This function adds the current date to the Support tab of the spreadsheet
+function addDate_O01() {
+  var date = new Date();
+  var sheetName = "sheet_name_here";
+  var ss = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID_HERE'); // Add the spreadsheet ID
+  var sheet = ss.getSheetByName(sheetName);
+  sheet.getRange(2, 3).setValue(Utilities.formatDate(date, 'Etc/GMT', 'dd/MM'));
+}
+
+// This function sanitizes CSV attachments before parsing
+function parseCsv(attachemnt, delimiter) {
+  var sanitizedString = attachemnt.replace(/(["'])(?:(?=(\\?))\2[\s\S])*?\1/g, function (e) { return e.replace(/\r?\n|\r/g, ' ') });
+  return Utilities.parseCsv(sanitizedString, delimiter);
+}
