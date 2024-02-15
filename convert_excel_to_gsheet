@@ -1,0 +1,53 @@
+// Objective of the script is to read the latest Excel file received to mailbox under the specified label,
+// update a designated tab in another file, and archive the received file in a folder.
+
+function your_function_name() {
+  var query = 'label:your_label_name label:unread'; // Gmail search query for unread emails with specific label
+  var filename_like = 'your_excelfilename'; // Filename pattern to match
+  var destinationFile = 'DESTINATION_FILE_ID'; // ID of the destination file
+  var archiveFolderID = 'ARCHIVE_FOLDER_ID'; // ID of the archive folder
+
+  var threads = GmailApp.search(query);
+
+  if (threads != null) { // Verify that there are threads matching the query
+    var archiveFolder = DriveApp.getFolderById(archiveFolderID);
+
+    var lastOne = threads[0]; // Select the latest thread
+    var message = lastOne.getMessages()[0]; // Get the latest message
+    var attachments = message.getAttachments(); // Get attachments
+
+    for (var j in attachments) { // Loop through attachments
+      var attachment = attachments[j];
+      var type = attachment.getContentType();
+      var name = attachment.getName().substring(0, attachment.getName().indexOf('.'));
+
+      var checkName = name.indexOf(filename_like) > -1;
+      var checkFile = archiveFolder.getFilesByName(name);
+
+      if (!checkName || checkFile.hasNext()) { // Check filename pattern and file existence in archive folder
+        continue;
+      } else {
+        // Copy attachment as Google Sheet in Drive
+        if (type.indexOf('octet') > -1 || type.indexOf('excel') > -1) { // Check if attachment is Excel
+          var blob = attachment.copyBlob().setContentTypeFromExtension();
+          var resource = {
+            title: Utilities.formatDate(message.getDate(), "GMT+1", "yy-MM-dd_hh:mm") + ' ' + name,
+            mimeType: MimeType.GOOGLE_SHEETS,
+            parents: [{ id: archiveFolderID }],
+          };
+          var tfile = Drive.Files.insert(resource, blob);
+          var newID = tfile.id;
+
+          // Retrieve data from the first sheet of the converted Google Sheet
+          var newSheet = SpreadsheetApp.openById(newID).getSheets()[0];
+          var values = newSheet.getSheetValues(1, 1, newSheet.getLastRow(), newSheet.getLastColumn());
+          values = values.filter(e => (String(e[2]).startsWith("NEW_FILTER_VALUE_1") && e[11] > 0) || String(e[2]).startsWith("NEW_FILTER_VALUE_2")); // Replace filter values
+          var destinationTab = SpreadsheetApp.openById(destinationFile).getSheetByName('your_sheet_name');
+          destinationTab.clearContents();
+          destinationTab.getRange(1, 1, values.length, newSheet.getLastColumn()).setValues(values);
+
+        }
+      }
+    }
+  }
+}
